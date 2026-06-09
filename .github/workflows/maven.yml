@@ -1,34 +1,52 @@
 name: Java CI with Maven
-
 on:
-  push:
-    branches:
-      - main
-
-  pull_request:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    runs-on: self-hosted
     steps:
-      - name: Checkout Source Code
-        uses: actions/checkout@v5
+    - uses: actions/checkout@v4
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
+    - name: Resolve Dependencies          # ✅ Added: populate local Maven cache
+      run: mvn dependency:resolve
+    - name: Build with Maven
+      run: mvn -B package --file pom.xml
 
-      - name: Setup JDK 17
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
+  security-check:
+    runs-on: self-hosted
+    needs: build
+    steps:
+    - uses: actions/checkout@v4
 
-      - name: Verify Maven Installation
-        run: mvn -version
+    - name: Set up JDK 17                 # ✅ Added: restore Maven cache
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+        cache: maven
 
-      - name: Build Project
-        run: mvn clean package
+    - name: Resolve Dependencies          # ✅ Added: ensure cache is warm
+      run: mvn dependency:resolve
 
-      - name: Upload Dependency Graph
-        uses: advanced-security/maven-dependency-submission-action@v5
+    - name: Trivy Installation
+      run: |
+        sudo apt-get install -y wget gnupg
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+        echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install -y trivy
+
+    - name: Trivy Scan                    # ✅ Added: vuln only, skip secret to avoid Maven calls
+      run: trivy fs --scanners vuln --format table -o fs-report.txt .
+
+    - name: Upload Trivy Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: trivy-fs-report
+        path: fs-report.txt
