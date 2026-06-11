@@ -140,30 +140,40 @@ jobs:
           push: true
           tags: amit24sapkal/bankapp:latest
           file: ./Dockerfile
-
+          
   deploy_to_kubernetes:
-     runs-on: self-hosted 
-     needs: builds_docker_image_and_push
-     steps:
-     - name: Checkout Code
-       uses: actions/checkout@v4
-     - name: Verify AWS CLI
-       run: aws --version
-     - name: Configure AWS credentials
-       uses: aws-actions/configure-aws-credentials@v2
-       with:
+    runs-on: self-hosted
+    needs: builds_docker_image_and_push
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Verify AWS CLI
+      run: aws --version
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ap-south-1
-     - name: Set up kubectl
-       uses: azure/setup-kubectl@v3
-       with:
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
         version: latest
-     - name: Configure kubeconfig
-       run: |
-        mkdir -p $HOME/.kube
-        echo "${{ secrets.EKS_KUBECONFIG }}" > $HOME/.kube/config
-     - name: Deploy to EKS
-       run: |
+
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig \
+          --region ap-south-1 \
+          --name confused-dance-goose
+
+    - name: Verify Cluster
+      run: kubectl get nodes
+
+    - name: Deploy to EKS
+      run: kubectl apply -f ds.yml
         kubectl apply -f ds.yml
     
